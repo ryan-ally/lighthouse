@@ -60,12 +60,19 @@ async function run() {
     devtools: true,
   });
   const page = await browser.newPage();
-  await page.goto('https://example.com');
+
+  // Cut off JS for initial page load.
+  // This step is unnecessary for every page I tried except https://cnn.com.
+  await page.setJavaScriptEnabled(false);
+
+  await page.goto(process.argv[2]);
   const targets = await browser.targets();
   const inspectorTarget = targets.filter(t => t.url().includes('devtools'))[1];
   if (inspectorTarget) {
-    const session = await inspectorTarget.createCDPSession();
+    // Enable JS for actual LH test.
+    await page.setJavaScriptEnabled(true);
 
+    const session = await inspectorTarget.createCDPSession();
     await session.send('Runtime.enable');
 
     /** @type {ProtocolResponse|undefined} */
