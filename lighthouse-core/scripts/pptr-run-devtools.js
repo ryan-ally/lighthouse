@@ -1,6 +1,7 @@
 'use strict';
 
 const puppeteer = require('puppeteer');
+const fs = require('fs');
 
 /** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} ProtocolResponse */
 
@@ -98,8 +99,7 @@ async function run() {
       throw new Error('Problem sniffing LHR.');
     }
 
-    // eslint-disable-next-line no-console
-    console.log(remoteLhrResponse.result.value);
+    fs.writeFileSync('latest-run/lhr.json', remoteLhrResponse.result.value);
 
     await session.send('Runtime.disable');
 
