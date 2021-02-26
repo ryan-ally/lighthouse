@@ -62,49 +62,49 @@ async function run() {
   });
   const page = await browser.newPage();
 
-  // Cut off JS for initial page load.
+  // Cut off JS for initial page navigation.
   // This step is unnecessary for every page I tried except https://cnn.com.
   await page.setJavaScriptEnabled(false);
 
   await page.goto(process.argv[2]);
   const targets = await browser.targets();
   const inspectorTarget = targets.filter(t => t.url().includes('devtools'))[1];
-  if (inspectorTarget) {
-    // Enable JS for actual LH test.
-    await page.setJavaScriptEnabled(true);
+  if (!inspectorTarget) throw new Error('No inspector found.');
 
-    const session = await inspectorTarget.createCDPSession();
-    await session.send('Runtime.enable');
+  // Enable JS for actual LH test.
+  await page.setJavaScriptEnabled(true);
 
-    /** @type {ProtocolResponse|undefined} */
-    let startLHResponse;
-    while (!startLHResponse || startLHResponse.exceptionDetails) {
-      startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
-        .catch(err => err);
-      if (startLHResponse && !startLHResponse.exceptionDetails) break;
-    }
+  const session = await inspectorTarget.createCDPSession();
+  await session.send('Runtime.enable');
 
-    /** @type {ProtocolResponse} */
-    const snifferAddedResponse = await session.send('Runtime.evaluate', {expression: sniffLhr})
+  /** @type {ProtocolResponse|undefined} */
+  let startLHResponse;
+  while (!startLHResponse || startLHResponse.exceptionDetails) {
+    startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
       .catch(err => err);
-    if (!snifferAddedResponse.result || !snifferAddedResponse.result.objectId) {
-      throw new Error('Problem creating LHR sniffer.');
-    }
-
-    /** @type {ProtocolResponse} */
-    const remoteLhrResponse = await session.send('Runtime.awaitPromise', {
-      promiseObjectId: snifferAddedResponse.result.objectId,
-    }).catch(err => err);
-    if (!remoteLhrResponse.result || !remoteLhrResponse.result.value) {
-      throw new Error('Problem sniffing LHR.');
-    }
-
-    fs.writeFileSync('latest-run/lhr.json', remoteLhrResponse.result.value);
-
-    await session.send('Runtime.disable');
-
-    await page.close();
-    await browser.close();
+    if (startLHResponse && !startLHResponse.exceptionDetails) break;
   }
+
+  /** @type {ProtocolResponse} */
+  const snifferAddedResponse = await session.send('Runtime.evaluate', {expression: sniffLhr})
+    .catch(err => err);
+  if (!snifferAddedResponse.result || !snifferAddedResponse.result.objectId) {
+    throw new Error('Problem creating LHR sniffer.');
+  }
+
+  /** @type {ProtocolResponse} */
+  const remoteLhrResponse = await session.send('Runtime.awaitPromise', {
+    promiseObjectId: snifferAddedResponse.result.objectId,
+  }).catch(err => err);
+  if (!remoteLhrResponse.result || !remoteLhrResponse.result.value) {
+    throw new Error('Problem sniffing LHR.');
+  }
+
+  fs.writeFileSync('latest-run/lhr.json', remoteLhrResponse.result.value);
+
+  await session.send('Runtime.disable');
+
+  await page.close();
+  await browser.close();
 }
 run();
