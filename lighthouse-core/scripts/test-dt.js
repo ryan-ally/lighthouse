@@ -2,7 +2,10 @@
 
 const puppeteer = require('puppeteer');
 
+/** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} ProtocolResponse */
+
 /**
+ * https://source.chromium.org/chromium/chromium/src/+/master:third_party/devtools-frontend/src/front_end/test_runner/TestRunner.js;l=170;drc=f59e6de269f4f50bca824f8ca678d5906c7d3dc8
  * @param {Record<string, function>} receiver
  * @param {string} methodName
  * @param {function} override
@@ -34,7 +37,7 @@ function addSniffer(receiver, methodName, override) {
   };
 }
 
-const sniff = `
+const sniffLhr = `
 new Promise(resolve => {
   (${addSniffer.toString()})(
     UI.panels.lighthouse.__proto__,
@@ -43,8 +46,13 @@ new Promise(resolve => {
   );
 });
 `;
-const openPanel = `UI.ViewManager.instance().showView('lighthouse')`;
-const startLH = `UI.panels.lighthouse.contentElement.querySelector('button').click()`;
+
+const startLighthouse = `
+(() => {
+  UI.ViewManager.instance().showView('lighthouse');
+  UI.panels.lighthouse.contentElement.querySelector('button').click();
+})()
+`;
 
 async function run() {
   const browser = await puppeteer.launch({
@@ -54,30 +62,42 @@ async function run() {
   const page = await browser.newPage();
   await page.goto('https://example.com');
   const targets = await browser.targets();
-  const dtTarget = targets.filter(t => t.url().includes('devtools'))[1];
-  if (dtTarget) {
-    const session = await dtTarget.createCDPSession();
-    await session.send('Page.enable');
+  const inspectorTarget = targets.filter(t => t.url().includes('devtools'))[1];
+  if (inspectorTarget) {
+    const session = await inspectorTarget.createCDPSession();
+
     await session.send('Runtime.enable');
-    session.once('Page.loadEventFired', async () => {
-      setTimeout(async () => {
-        await session.send('Runtime.evaluate', {expression: openPanel});
-      }, 1000);
-      setTimeout(async () => {
-        await session.send('Runtime.evaluate', {expression: startLH});
-        const remotePromise = await session.send('Runtime.evaluate', {expression: sniff});
-        const remoteLhr = await session.send('Runtime.awaitPromise', {
-          // @ts-expect-error
-          promiseObjectId: remotePromise.result.objectId,
-        }).catch(err => err);
-        // eslint-disable-next-line no-console
-        console.log(remoteLhr.result.value);
-        await page.close();
-        await browser.close();
-      }, 1500);
-      await session.send('Runtime.disable');
-      await session.send('Page.disable');
-    });
+
+    /** @type {ProtocolResponse|undefined} */
+    let startLHResponse;
+    while (!startLHResponse || startLHResponse.exceptionDetails) {
+      startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
+        .catch(err => err);
+      if (startLHResponse && !startLHResponse.exceptionDetails) break;
+    }
+
+    /** @type {ProtocolResponse} */
+    const snifferAddedResponse = await session.send('Runtime.evaluate', {expression: sniffLhr})
+      .catch(err => err);
+    if (!snifferAddedResponse.result || !snifferAddedResponse.result.objectId) {
+      throw new Error('Problem creating LHR sniffer.');
+    }
+
+    /** @type {ProtocolResponse} */
+    const remoteLhrResponse = await session.send('Runtime.awaitPromise', {
+      promiseObjectId: snifferAddedResponse.result.objectId,
+    }).catch(err => err);
+    if (!remoteLhrResponse.result || !remoteLhrResponse.result.value) {
+      throw new Error('Problem sniffing LHR.');
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(remoteLhrResponse.result.value);
+
+    await session.send('Runtime.disable');
+
+    await page.close();
+    await browser.close();
   }
 }
 run();
