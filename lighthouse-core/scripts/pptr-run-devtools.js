@@ -3,7 +3,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 
-/** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} ProtocolResponse */
+/** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} RuntimeEvaluateResponse */
 
 /**
  * https://source.chromium.org/chromium/chromium/src/+/master:third_party/devtools-frontend/src/front_end/test_runner/TestRunner.js;l=170;drc=f59e6de269f4f50bca824f8ca678d5906c7d3dc8
@@ -43,7 +43,7 @@ new Promise(resolve => {
   (${addSniffer.toString()})(
     UI.panels.lighthouse.__proto__,
     '_buildReportUI',
-    (lhr, artifacts) => resolve(JSON.stringify(lhr))
+    (lhr, artifacts) => resolve(lhr)
   );
 });
 `;
@@ -74,31 +74,25 @@ async function run() {
   // Navigate to page async so loading doesn't block LH from starting.
   page.goto(process.argv[2]).catch(err => err);
 
-  /** @type {ProtocolResponse|undefined} */
+  /** @type {RuntimeEvaluateResponse|undefined} */
   let startLHResponse;
   while (!startLHResponse || startLHResponse.exceptionDetails) {
     startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
       .catch(err => err);
   }
 
-  /** @type {ProtocolResponse} */
-  const snifferAddedResponse = await session.send('Runtime.evaluate', {expression: sniffLhr})
-    .catch(err => err);
-  if (!snifferAddedResponse.result || !snifferAddedResponse.result.objectId) {
-    throw new Error('Problem creating LHR sniffer.');
-  }
-
-  /** @type {ProtocolResponse} */
-  const remoteLhrResponse = await session.send('Runtime.awaitPromise', {
-    promiseObjectId: snifferAddedResponse.result.objectId,
+  /** @type {RuntimeEvaluateResponse} */
+  const remoteLhrResponse = await session.send('Runtime.evaluate', {
+    expression: sniffLhr,
+    awaitPromise: true,
+    returnByValue: true,
   }).catch(err => err);
+
   if (!remoteLhrResponse.result || !remoteLhrResponse.result.value) {
     throw new Error('Problem sniffing LHR.');
   }
 
-  fs.writeFileSync('latest-run/lhr.json', remoteLhrResponse.result.value);
-
-  await session.send('Runtime.disable');
+  fs.writeFileSync('latest-run/lhr.json', JSON.stringify(remoteLhrResponse.result.value));
 
   await page.close();
   await browser.close();
