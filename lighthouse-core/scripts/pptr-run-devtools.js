@@ -76,8 +76,13 @@ async function run() {
   const session = await inspectorTarget.createCDPSession();
   await session.send('Runtime.enable');
 
-  // Navigate to page async so loading doesn't block LH from starting.
-  page.goto(process.argv[2]).catch(err => err);
+  // Navigate to page and wait for initial HTML to be parsed before trying to start LH.
+  await new Promise(async resolve => {
+    const pageSession = await page.target().createCDPSession();
+    await pageSession.send('Page.enable');
+    pageSession.once('Page.domContentEventFired', resolve);
+    page.goto(process.argv[2]).catch(err => err);
+  });
 
   /** @type {RuntimeEvaluateResponse|undefined} */
   let startLHResponse;
