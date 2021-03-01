@@ -51,7 +51,9 @@ new Promise(resolve => {
 const startLighthouse = `
 (() => {
   UI.ViewManager.instance().showView('lighthouse');
-  UI.panels.lighthouse.contentElement.querySelector('button').click();
+  const button = UI.panels.lighthouse.contentElement.querySelector('button');
+  if (button.disabled) throw new Error('Start button disabled');
+  button.click();
 })()
 `;
 
@@ -62,27 +64,21 @@ async function run() {
   });
   const page = await browser.newPage();
 
-  // Cut off JS for initial page navigation.
-  // This step is unnecessary for every page I tried except https://cnn.com.
-  await page.setJavaScriptEnabled(false);
-
-  await page.goto(process.argv[2]);
   const targets = await browser.targets();
   const inspectorTarget = targets.filter(t => t.url().includes('devtools'))[1];
   if (!inspectorTarget) throw new Error('No inspector found.');
 
-  // Enable JS for actual LH test.
-  await page.setJavaScriptEnabled(true);
-
   const session = await inspectorTarget.createCDPSession();
   await session.send('Runtime.enable');
+
+  // Navigate to page async so loading doesn't block LH from starting.
+  page.goto(process.argv[2]).catch(err => err);
 
   /** @type {ProtocolResponse|undefined} */
   let startLHResponse;
   while (!startLHResponse || startLHResponse.exceptionDetails) {
     startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
       .catch(err => err);
-    if (startLHResponse && !startLHResponse.exceptionDetails) break;
   }
 
   /** @type {ProtocolResponse} */
