@@ -153,7 +153,7 @@ async function run() {
   const urlList = await readUrlList();
   for (let i = 0; i < urlList.length; ++i) {
     const lhr = await testPage(browser, urlList[i]);
-    fs.writeFileSync(`latest-run/devtools-lhrs/lhr-${i}.json`, lhr);
+    fs.writeFileSync(`${OUTPUT_DIR}/lhr-${i}.json`, lhr);
   }
 
   await browser.close();
