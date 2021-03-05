@@ -135,6 +135,16 @@ async function readUrlList() {
 }
 
 async function run() {
+  // Create output directory.
+  if (fs.existsSync(OUTPUT_DIR)) {
+    const files = new glob.GlobSync(`${OUTPUT_DIR}/*`).found;
+    for (const file of files) {
+      fs.unlinkSync(file);
+    }
+  } else {
+    fs.mkdirSync(OUTPUT_DIR, {recursive: true});
+  }
+
   const browser = await puppeteer.launch({
     executablePath: process.env.CHROME_PATH,
     devtools: true,
@@ -148,15 +158,4 @@ async function run() {
 
   await browser.close();
 }
-
-// Create output directory.
-if (fs.existsSync(OUTPUT_DIR)) {
-  const files = new glob.GlobSync(`${OUTPUT_DIR}/*`).found;
-  for (const file of files) {
-    fs.unlinkSync(file);
-  }
-} else {
-  fs.mkdirSync(OUTPUT_DIR, {recursive: true});
-}
-
 run();
