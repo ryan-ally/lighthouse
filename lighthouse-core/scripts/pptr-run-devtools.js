@@ -5,6 +5,12 @@
  */
 'use strict';
 
+/**
+ * USAGE:
+ * URL list file: yarn run-devtools < path/to/urls.txt
+ * Single URL: echo "https://example.com" | yarn run-devtools
+ */
+
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const readline = require('readline');
