@@ -7,6 +7,10 @@
 
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const readline = require('readline');
+const glob = require('glob');
+
+const OUTPUT_DIR = 'latest-run/devtools-lhrs';
 
 /** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} RuntimeEvaluateResponse */
 
@@ -62,11 +66,12 @@ const startLighthouse = `
 })()
 `;
 
-async function run() {
-  const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH,
-    devtools: true,
-  });
+/**
+ * @param {import('puppeteer').Browser} browser
+ * @param {string} url
+ * @return {Promise<string>}
+ */
+async function testPage(browser, url) {
   const page = await browser.newPage();
 
   const targets = await browser.targets();
@@ -81,7 +86,7 @@ async function run() {
     const pageSession = await page.target().createCDPSession();
     await pageSession.send('Page.enable');
     pageSession.once('Page.domContentEventFired', resolve);
-    page.goto(process.argv[2]).catch(err => err);
+    page.goto(url).catch(err => err);
   });
 
   /** @type {RuntimeEvaluateResponse|undefined} */
@@ -102,9 +107,50 @@ async function run() {
     throw new Error('Problem sniffing LHR.');
   }
 
-  fs.writeFileSync('latest-run/lhr.json', JSON.stringify(remoteLhrResponse.result.value));
-
   await page.close();
+
+  return JSON.stringify(remoteLhrResponse.result.value);
+}
+
+/**
+ * @return {Promise<string[]>}
+ */
+async function readUrlList() {
+  /** @type {string[]} */
+  const urlList = [];
+
+  const rl = readline.createInterface(process.stdin, process.stdout);
+  rl.on('line', async line => {
+    if (line.startsWith('#')) return;
+    urlList.push(line);
+  });
+
+  return new Promise(resolve => rl.on('close', () => resolve(urlList)));
+}
+
+async function run() {
+  const browser = await puppeteer.launch({
+    executablePath: process.env.CHROME_PATH,
+    devtools: true,
+  });
+
+  const urlList = await readUrlList();
+  for (let i = 0; i < urlList.length; ++i) {
+    const lhr = await testPage(browser, urlList[i]);
+    fs.writeFileSync(`latest-run/devtools-lhrs/lhr-${i}.json`, lhr);
+  }
+
   await browser.close();
 }
+
+// Create output directory.
+if (fs.existsSync(OUTPUT_DIR)) {
+  const files = new glob.GlobSync(`${OUTPUT_DIR}/*`).found;
+  for (const file of files) {
+    fs.unlinkSync(file);
+  }
+} else {
+  fs.mkdirSync(OUTPUT_DIR, {recursive: true});
+}
+
 run();
