@@ -8,7 +8,7 @@
 /**
  * USAGE:
  * URL list file: yarn run-devtools < path/to/urls.txt
- * Single URL: echo "https://example.com" | yarn run-devtools
+ * Single URL: yarn run-devtools "https://example.com"
  */
 
 const puppeteer = require('puppeteer');
@@ -16,9 +16,11 @@ const fs = require('fs');
 const readline = require('readline');
 const glob = require('glob');
 
+/** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} RuntimeEvaluateResponse */
+
 const OUTPUT_DIR = 'latest-run/devtools-lhrs';
 
-/** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} RuntimeEvaluateResponse */
+const urlArg = process.argv[2];
 
 /**
  * https://source.chromium.org/chromium/chromium/src/+/master:third_party/devtools-frontend/src/front_end/test_runner/TestRunner.js;l=170;drc=f59e6de269f4f50bca824f8ca678d5906c7d3dc8
@@ -122,11 +124,12 @@ async function testPage(browser, url) {
  * @return {Promise<string[]>}
  */
 async function readUrlList() {
+  if (urlArg) return [urlArg];
+
   /** @type {string[]} */
   const urlList = [];
-
   const rl = readline.createInterface(process.stdin, process.stdout);
-  rl.on('line', async line => {
+  rl.on('line', line => {
     if (line.startsWith('#')) return;
     urlList.push(line);
   });
