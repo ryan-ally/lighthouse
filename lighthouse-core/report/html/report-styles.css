@@ -541,6 +541,8 @@
   background-color: var(--color-hover);
 }
 
+/* We want to hide the browser's default arrow marker on summary elements. */
+
 /* ::marker is a new pseudoselector. */
 /* https://chromestatus.com/feature/6730096436051968 */
 @supports selector(::marker) {
@@ -550,8 +552,8 @@
   }
 }
 
-/* Older webkit browsers might have -webkit-details-marker */
-
+/* Older webkit browsers might have -webkit-details-marker,
+   and require setting list style type to none. */
 .lh-audit-group > summary,
 .lh-expandable-details > summary {
   list-style-type: none;
