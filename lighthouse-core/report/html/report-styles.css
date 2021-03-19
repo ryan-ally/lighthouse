@@ -541,8 +541,17 @@
   background-color: var(--color-hover);
 }
 
-/* Hide the expandable arrow icon, three ways: via the CSS Counter Styles spec, for webkit/blink browsers, hiding the polyfilled icon */
-/* https://github.com/javan/details-element-polyfill/blob/master/src/details-element-polyfill/polyfill.sass */
+/* ::marker is a new pseudoselector. */
+/* https://chromestatus.com/feature/6730096436051968 */
+@supports selector(::marker) {
+  .lh-audit-group > summary,
+  .lh-expandable-details > summary {
+    display: block;
+  }
+}
+
+/* Older webkit browsers might have -webkit-details-marker */
+
 .lh-audit-group > summary,
 .lh-expandable-details > summary {
   list-style-type: none;
