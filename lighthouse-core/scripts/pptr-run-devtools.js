@@ -7,6 +7,9 @@
 
 /**
  * USAGE:
+ * Make sure CHROME_PATH is set to a modern version of Chrome.
+ * This script won't work on older versions that use the "Audits" panel.
+ *
  * URL list file: yarn run-devtools < path/to/urls.txt
  * Single URL: yarn run-devtools "https://example.com"
  */
