@@ -40,16 +40,13 @@ function addSniffer(receiver, methodName, override) {
   receiver[methodName] = function(...args) {
     let result;
     try {
-      // eslint-disable-next-line prefer-rest-params
       result = original.apply(this, args);
     } finally {
       receiver[methodName] = original;
     }
     // In case of exception the override won't be called.
     try {
-      // eslint-disable-next-line prefer-rest-params
       Array.prototype.push.call(args, result);
-      // eslint-disable-next-line prefer-rest-params
       override.apply(this, args);
     } catch (e) {
       throw new Error('Exception in overriden method \'' + methodName + '\': ' + e);
@@ -133,13 +130,12 @@ async function readUrlList() {
   const urlList = [];
   const rl = readline.createInterface(process.stdin, process.stdout);
 
-  // @ts-ignore Iterable in Node 12
-  for await (const line of rl) {
-    if (line.startsWith('#')) continue;
+  rl.on('line', async line => {
+    if (line.startsWith('#')) return;
     urlList.push(line);
-  }
+  });
 
-  return urlList;
+  return new Promise(resolve => rl.on('close', () => resolve(urlList)));
 }
 
 async function run() {
