@@ -17,13 +17,22 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const readline = require('readline');
-const glob = require('glob');
+const yargs = require('yargs/yargs');
 
 /** @typedef {{result?: {value?: string, objectId?: number}, exceptionDetails?: object}} RuntimeEvaluateResponse */
 
-const OUTPUT_DIR = 'latest-run/devtools-lhrs';
-
-const urlArg = process.argv[2];
+const argv = yargs(process.argv.slice(2))
+  .usage('$0 [url]')
+  .help('h').alias('h', 'help')
+  .option('_', {type: 'string'})
+  .option('o', {
+    type: 'string',
+    default: 'latest-run/devtools-lhrs',
+  }).alias('o', 'output-dir')
+  .option('d', {
+    type: 'string',
+  }).alias('d', 'custom-devtools-frontend')
+  .argv;
 
 /**
  * https://source.chromium.org/chromium/chromium/src/+/master:third_party/devtools-frontend/src/front_end/test_runner/TestRunner.js;l=170;drc=f59e6de269f4f50bca824f8ca678d5906c7d3dc8
@@ -127,7 +136,7 @@ async function testPage(browser, url) {
  * @return {Promise<string[]>}
  */
 async function readUrlList() {
-  if (urlArg) return [urlArg];
+  if (argv._[0]) return [argv._[0]];
 
   /** @type {string[]} */
   const urlList = [];
@@ -143,24 +152,25 @@ async function readUrlList() {
 
 async function run() {
   // Create output directory.
-  if (fs.existsSync(OUTPUT_DIR)) {
-    const files = new glob.GlobSync(`${OUTPUT_DIR}/*`).found;
-    for (const file of files) {
-      fs.unlinkSync(file);
+  if (fs.existsSync(argv.o)) {
+    if (fs.readdirSync(argv.o).length) {
+      // eslint-disable-next-line no-console
+      console.warn('WARNING: Output directory is not empty.');
     }
   } else {
-    fs.mkdirSync(OUTPUT_DIR, {recursive: true});
+    fs.mkdirSync(argv.o);
   }
 
   const browser = await puppeteer.launch({
     executablePath: process.env.CHROME_PATH,
+    args: argv.d ? [argv.d] : [],
     devtools: true,
   });
 
   const urlList = await readUrlList();
   for (let i = 0; i < urlList.length; ++i) {
     const lhr = await testPage(browser, urlList[i]);
-    fs.writeFileSync(`${OUTPUT_DIR}/lhr-${i}.json`, lhr);
+    fs.writeFileSync(`${argv.o}/lhr-${i}.json`, lhr);
   }
 
   await browser.close();
