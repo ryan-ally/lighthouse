@@ -24,11 +24,17 @@ function getAuditsBreakdown(lhr) {
     audit => !irrelevantDisplayModes.has(audit.scoreDisplayMode)
   );
 
-  const erroredAudits = applicableAudits.filter(audit => audit.score === null);
+  const informativeAudits = applicableAudits.filter(
+    audit => audit.scoreDisplayMode === 'informative'
+  );
+
+  const erroredAudits = applicableAudits.filter(
+    audit => audit.score === null && audit && !informativeAudits.includes(audit)
+  );
 
   const failedAudits = applicableAudits.filter(audit => audit.score !== null && audit.score < 1);
 
-  return {auditResults, erroredAudits, failedAudits};
+  return {auditResults, erroredAudits, failedAudits, informativeAudits};
 }
 
 describe('Fraggle Rock API', () => {
@@ -89,7 +95,7 @@ describe('Fraggle Rock API', () => {
 
       const {auditResults, erroredAudits, failedAudits} = getAuditsBreakdown(lhr);
       // TODO(FR-COMPAT): This assertion can be removed when full compatibility is reached.
-      expect(auditResults.length).toMatchInlineSnapshot(`58`);
+      expect(auditResults.length).toMatchInlineSnapshot(`72`);
 
       expect(erroredAudits).toHaveLength(0);
       expect(failedAudits.map(audit => audit.id)).toContain('label');
@@ -113,7 +119,9 @@ describe('Fraggle Rock API', () => {
       const bestPractices = lhr.categories['best-practices'];
       expect(bestPractices.score).toBeLessThan(1);
 
-      const {erroredAudits, failedAudits} = getAuditsBreakdown(lhr);
+      const {auditResults, erroredAudits, failedAudits} = getAuditsBreakdown(lhr);
+      // TODO(FR-COMPAT): This assertion can be removed when full compatibility is reached.
+      expect(auditResults.length).toMatchInlineSnapshot(`24`);
 
       expect(erroredAudits).toHaveLength(0);
       expect(failedAudits.map(audit => audit.id)).toContain('errors-in-console');
@@ -130,6 +138,12 @@ describe('Fraggle Rock API', () => {
       // If we couldn't find it, assert something similar on the object that we know will fail
       // for a better debug message.
       if (!matchingLog) expect(errorLogs).toContain({description: /violations added/});
+
+      // Check that network request information was computed.
+      expect(lhr.audits).toHaveProperty('total-byte-weight');
+      const details = lhr.audits['total-byte-weight'].details;
+      if (!details || details.type !== 'table') throw new Error('Unexpected byte weight details');
+      expect(details.items).toMatchObject([{url: `${serverBaseUrl}/onclick.html`}]);
     });
   });
 
@@ -138,17 +152,29 @@ describe('Fraggle Rock API', () => {
       server.baseDir = path.join(__dirname, '../fixtures/fraggle-rock/navigation-basic');
     });
 
-    it('should compute both Accessibility & ConsoleMessage results', async () => {
+    it('should compute both snapshot & timespan results', async () => {
       const result = await lighthouse.navigation({page, url: `${serverBaseUrl}/index.html`});
       if (!result) throw new Error('Lighthouse failed to produce a result');
 
       const {lhr} = result;
-      const {failedAudits, erroredAudits} = getAuditsBreakdown(lhr);
+      const {auditResults, failedAudits, erroredAudits} = getAuditsBreakdown(lhr);
+      // TODO(FR-COMPAT): This assertion can be removed when full compatibility is reached.
+      expect(auditResults.length).toMatchInlineSnapshot(`102`);
       expect(erroredAudits).toHaveLength(0);
 
       const failedAuditIds = failedAudits.map(audit => audit.id);
       expect(failedAuditIds).toContain('label');
       expect(failedAuditIds).toContain('errors-in-console');
+
+      // Check that network request information was computed.
+      expect(lhr.audits).toHaveProperty('total-byte-weight');
+      const details = lhr.audits['total-byte-weight'].details;
+      if (!details || details.type !== 'table') throw new Error('Unexpected byte weight details');
+      expect(details.items).toMatchObject([{url: `${serverBaseUrl}/index.html`}]);
+
+      // Check that performance metrics were computed.
+      expect(lhr.audits).toHaveProperty('first-contentful-paint');
+      expect(Number.isFinite(lhr.audits['first-contentful-paint'].numericValue)).toBe(true);
     });
   });
 });

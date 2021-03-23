@@ -8,6 +8,7 @@ import _NetworkNode = require('../lighthouse-core/lib/dependency-graph/network-n
 import _CPUNode = require('../lighthouse-core/lib/dependency-graph/cpu-node');
 import _Simulator = require('../lighthouse-core/lib/dependency-graph/simulator/simulator');
 import Driver = require('../lighthouse-core/gather/driver');
+import ExecutionContext = require('../lighthouse-core/gather/driver/execution-context');
 
 declare global {
   module LH.Gatherer {
@@ -27,14 +28,18 @@ declare global {
     /** The limited driver interface shared between pre and post Fraggle Rock Lighthouse. */
     export interface FRTransitionalDriver {
       defaultSession: FRProtocolSession;
-      evaluateAsync(expression: string, options?: {useIsolation?: boolean}): Promise<any>;
-      evaluate<T extends any[], R>(mainFn: (...args: T) => R, options: {args: T, useIsolation?: boolean, deps?: Array<Function|string>}): FlattenedPromise<R>;
+      executionContext: ExecutionContext;
     }
 
     /** The limited context interface shared between pre and post Fraggle Rock Lighthouse. */
     export interface FRTransitionalContext<TDependencies extends DependencyKey = DefaultDependenciesKey> {
-      gatherMode: GatherMode
+      /** The URL of the page that is currently active. Might be `about:blank` in the before phases */
+      url: string;
+      /** The gather mode Lighthouse is currently in. */
+      gatherMode: GatherMode;
+      /** The connection to the page being analyzed. */
       driver: FRTransitionalDriver;
+      /** The set of available dependencies requested by the current gatherer. */
       dependencies: TDependencies extends DefaultDependenciesKey ?
         {} :
         Pick<GathererArtifacts, Exclude<TDependencies, DefaultDependenciesKey>>;
@@ -58,7 +63,12 @@ declare global {
       trace?: Trace;
     }
 
-    export type PhaseArtifact = LH.GathererArtifacts[keyof LH.GathererArtifacts]
+    export type PhaseArtifact = |
+        LH.GathererArtifacts[keyof LH.GathererArtifacts] |
+      LH.Artifacts['devtoolsLogs'] |
+      LH.Artifacts['traces'] |
+      LH.Artifacts['WebAppManifest'] |
+      LH.Artifacts['InstallabilityErrors'];
     export type PhaseResultNonPromise = void|PhaseArtifact
     export type PhaseResult = PhaseResultNonPromise | Promise<PhaseResultNonPromise>
 
@@ -100,9 +110,11 @@ declare global {
     export interface FRGathererInstance<TDependencies extends DependencyKey = DefaultDependenciesKey> {
       name: keyof LH.GathererArtifacts; // temporary COMPAT measure until artifact config support is available
       meta: GathererMeta<TDependencies>;
-      snapshot(context: FRTransitionalContext<TDependencies>): PhaseResult;
+      beforeNavigation(context: FRTransitionalContext<DefaultDependenciesKey>): Promise<void>|void;
       beforeTimespan(context: FRTransitionalContext<DefaultDependenciesKey>): Promise<void>|void;
       afterTimespan(context: FRTransitionalContext<TDependencies>): PhaseResult;
+      afterNavigation(context: FRTransitionalContext<TDependencies>): PhaseResult;
+      snapshot(context: FRTransitionalContext<TDependencies>): PhaseResult;
     }
 
     namespace Simulation {

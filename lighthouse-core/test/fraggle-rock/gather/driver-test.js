@@ -30,7 +30,7 @@ let driver;
 
 beforeEach(() => {
   // @ts-expect-error - Individual mock functions are applied as necessary.
-  page = {target: () => pageTarget};
+  page = {target: () => pageTarget, url: jest.fn()};
   // @ts-expect-error - Individual mock functions are applied as necessary.
   pageTarget = {createCDPSession: () => puppeteerSession};
   // @ts-expect-error - Individual mock functions are applied as necessary.
@@ -60,21 +60,20 @@ for (const fnName of DELEGATED_FUNCTIONS) {
   });
 }
 
-describe('.evaluateAsync', () => {
-  it('should fail if called before connect', async () => {
-    await expect(driver.evaluateAsync('1 + 1')).rejects.toBeTruthy();
+describe('.url', () => {
+  it('should return the page url', async () => {
+    page.url = jest.fn().mockReturnValue('https://example.com');
+    expect(await driver.url()).toEqual('https://example.com');
+  });
+});
+
+describe('.executionContext', () => {
+  it('should fail if called before connect', () => {
+    expect(() => driver.executionContext).toThrow();
   });
 
-  it('should delegate to execution context', async () => {
+  it('should create an execution context on connect', async () => {
     await driver.connect();
-    if (!driver._executionContext) throw new Error('Runtime did not connect');
-
-    const returnValue = 2;
-    const evaluateAsyncMock = driver._executionContext.evaluateAsync =
-      jest.fn().mockReturnValue(returnValue);
-
-    const actualResult = await driver.evaluateAsync('1 + 1', {useIsolation: true});
-    expect(evaluateAsyncMock).toHaveBeenCalledWith('1 + 1', {useIsolation: true});
-    expect(actualResult).toEqual(returnValue);
+    expect(driver.executionContext).toBeTruthy();
   });
 });
