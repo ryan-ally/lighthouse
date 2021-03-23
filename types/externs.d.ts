@@ -5,7 +5,8 @@
  */
 
 import _Crdp from 'devtools-protocol/types/protocol';
-import _CrdpMappings from 'devtools-protocol/types/protocol-mapping'
+import _CrdpMappings from 'devtools-protocol/types/protocol-mapping';
+import {ParseSelector} from 'typed-query-selector/parser';
 
 declare global {
   // Augment Intl to include
@@ -63,6 +64,8 @@ declare global {
   /** Obtain the type of the first parameter of a function. */
   type FirstParamType<T extends (arg1: any, ...args: any[]) => any> =
     T extends (arg1: infer P, ...args: any[]) => any ? P : never;
+
+  type FlattenedPromise<A> = Promise<A extends Promise<infer X> ? X : A>;
 
   /**
    * Split string `S` on delimiter `D`.
@@ -335,10 +338,12 @@ declare global {
             old_rect?: Array<number>,
             new_rect?: Array<number>,
           }>;
-          score?: number,
+          score?: number;
+          weighted_score_delta?: number;
           had_recent_input?: boolean;
           compositeFailed?: number;
           unsupportedProperties?: string[];
+          size?: number;
         };
         frame?: string;
         name?: string;
@@ -369,8 +374,27 @@ declare global {
   }
 
   interface Window {
+    // Cached native functions/objects for use in case the page overwrites them.
+    // See: `driver.cacheNatives`.
+    __nativePromise: PromiseConstructor;
+    __nativeURL: URL;
+    __ElementMatches: Element['matches'];
+    __perfNow: Performance['now'];
+
+    /** Used for monitoring long tasks in the test page. */
+    ____lastLongTask?: number;
+
     /** Used by FullPageScreenshot gatherer. */
-    __lighthouseNodesDontTouchOrAllVarianceGoesAway: Map<HTMLElement, string>;
+    __lighthouseNodesDontTouchOrAllVarianceGoesAway: Map<Element, string>;
     __lighthouseExecutionContextId?: number;
+
+    // Not defined in tsc yet: https://github.com/microsoft/TypeScript/issues/40807
+    requestIdleCallback(callback: (deadline: {didTimeout: boolean, timeRemaining: () => DOMHighResTimeStamp}) => void, options?: {timeout: number}): number;
+  }
+
+  // Stricter querySelector/querySelectorAll using typed-query-selector.
+  interface ParentNode {
+    querySelector<S extends string>(selector: S): ParseSelector<S> | null;
+    querySelectorAll<S extends string>(selector: S): NodeListOf<ParseSelector<S>>;
   }
 }

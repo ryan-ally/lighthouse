@@ -21,7 +21,7 @@ const pageFunctions = require('../../lib/page-functions.js');
  *
  * @return {LH.Artifacts['AnchorElements']}
  */
-/* istanbul ignore next */
+/* c8 ignore start */
 function collectAnchorElements() {
   /** @param {string} url */
   const resolveURLOrEmpty = url => {
@@ -71,6 +71,7 @@ function collectAnchorElements() {
     };
   });
 }
+/* c8 ignore stop */
 
 /**
  * @param {LH.Gatherer.PassContext['driver']} driver
@@ -95,15 +96,15 @@ class AnchorElements extends Gatherer {
    */
   async afterPass(passContext) {
     const driver = passContext.driver;
-    const expression = `(() => {
-      ${pageFunctions.getElementsInDocumentString};
-      ${pageFunctions.getNodeDetailsString};
 
-      return (${collectAnchorElements})();
-    })()`;
-
-    /** @type {LH.Artifacts['AnchorElements']} */
-    const anchors = await driver.evaluateAsync(expression, {useIsolation: true});
+    const anchors = await driver.executionContext.evaluate(collectAnchorElements, {
+      args: [],
+      useIsolation: true,
+      deps: [
+        pageFunctions.getElementsInDocumentString,
+        pageFunctions.getNodeDetailsString,
+      ],
+    });
     await driver.sendCommand('DOM.enable');
 
     // DOM.getDocument is necessary for pushNodesByBackendIdsToFrontend to properly retrieve nodeIds if the `DOM` domain was enabled before this gatherer, invoke it to be safe.

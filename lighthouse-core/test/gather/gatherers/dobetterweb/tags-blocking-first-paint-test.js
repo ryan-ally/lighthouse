@@ -105,7 +105,7 @@ describe('First paint blocking tags', () => {
   it('return filtered and indexed requests', () => {
     const actual = TagsBlockingFirstPaint
       ._filteredAndIndexedByUrl(traceData.networkRecords);
-    return assert.deepEqual(actual, {
+    return expect(Object.fromEntries(actual)).toMatchObject({
       'http://google.com/css/style.css': {
         isLinkPreload: false,
         transferSize: 10,
@@ -133,7 +133,7 @@ describe('First paint blocking tags', () => {
     });
   });
 
-  it('returns an artifact', () => {
+  it('returns an artifact', async () => {
     const linkDetails = {
       tagName: 'LINK',
       url: 'http://google.com/css/style.css',
@@ -141,6 +141,7 @@ describe('First paint blocking tags', () => {
       disabled: false,
       media: '',
       rel: 'stylesheet',
+      mediaChanges: [],
     };
 
     const scriptDetails = {
@@ -149,28 +150,28 @@ describe('First paint blocking tags', () => {
       src: 'http://google.com/js/app.js',
     };
 
-    return tagsBlockingFirstPaint.afterPass({
-      driver: {
-        evaluateAsync() {
+    const artifact = await tagsBlockingFirstPaint.afterPass({
+      driver: {executionContext: {
+        evaluate() {
           return Promise.resolve([linkDetails, linkDetails, scriptDetails]);
         },
+      }},
+    }, traceData);
+
+    const expected = [
+      {
+        tag: {tagName: 'LINK', url: linkDetails.url, mediaChanges: []},
+        transferSize: 10,
+        startTime: 10,
+        endTime: 10,
       },
-    }, traceData).then(artifact => {
-      const expected = [
-        {
-          tag: linkDetails,
-          transferSize: 10,
-          startTime: 10,
-          endTime: 10,
-        },
-        {
-          tag: scriptDetails,
-          transferSize: 12,
-          startTime: 12,
-          endTime: 22,
-        },
-      ];
-      assert.deepEqual(artifact, expected);
-    });
+      {
+        tag: {tagName: 'SCRIPT', url: scriptDetails.url, mediaChanges: undefined},
+        transferSize: 12,
+        startTime: 12,
+        endTime: 22,
+      },
+    ];
+    assert.deepEqual(artifact, expected);
   });
 });

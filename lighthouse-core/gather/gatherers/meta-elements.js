@@ -5,12 +5,12 @@
  */
 'use strict';
 
-const Gatherer = require('./gatherer.js');
+const FRGatherer = require('../../fraggle-rock/gather/base-gatherer.js');
 const pageFunctions = require('../../lib/page-functions.js');
 
 /* globals getElementsInDocument */
 
-/* istanbul ignore next */
+/* c8 ignore start */
 function collectMetaElements() {
   // @ts-expect-error - getElementsInDocument put into scope via stringification
   const metas = /** @type {HTMLMetaElement[]} */ (getElementsInDocument('head meta'));
@@ -30,18 +30,24 @@ function collectMetaElements() {
     };
   });
 }
+/* c8 ignore stop */
 
-class MetaElements extends Gatherer {
+class MetaElements extends FRGatherer {
+  /** @type {LH.Gatherer.GathererMeta} */
+  meta = {
+    supportedModes: ['snapshot', 'navigation'],
+  }
+
   /**
-   * @param {LH.Gatherer.PassContext} passContext
+   * @param {LH.Gatherer.FRTransitionalContext} passContext
    * @return {Promise<LH.Artifacts['MetaElements']>}
    */
-  async afterPass(passContext) {
+  snapshot(passContext) {
     const driver = passContext.driver;
 
     // We'll use evaluateAsync because the `node.getAttribute` method doesn't actually normalize
     // the values like access from JavaScript does.
-    return driver.evaluate(collectMetaElements, {
+    return driver.executionContext.evaluate(collectMetaElements, {
       args: [],
       useIsolation: true,
       deps: [pageFunctions.getElementsInDocument],

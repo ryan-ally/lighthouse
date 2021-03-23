@@ -124,6 +124,7 @@ class ExecutionContext {
   }
 
   /**
+   * Note: Prefer `evaluate` instead.
    * Evaluate an expression in the context of the current page. If useIsolation is true, the expression
    * will be evaluated in a content script that has access to the page's DOM but whose JavaScript state
    * is completely separate.
@@ -160,15 +161,14 @@ class ExecutionContext {
    * @param {{args: T, useIsolation?: boolean, deps?: Array<Function|string>}} options `args` should
    *   match the args of `mainFn`, and can be any serializable value. `deps` are functions that must be
    *   defined for `mainFn` to work.
-   * @return {Promise<R>}
+   * @return {FlattenedPromise<R>}
    */
   evaluate(mainFn, options) {
     const argsSerialized = options.args.map(arg => JSON.stringify(arg)).join(',');
     const depsSerialized = options.deps ? options.deps.join('\n') : '';
     const expression = `(() => {
       ${depsSerialized}
-      ${mainFn}
-      return ${mainFn.name}(${argsSerialized});
+      return (${mainFn})(${argsSerialized});
     })()`;
     return this.evaluateAsync(expression, options);
   }

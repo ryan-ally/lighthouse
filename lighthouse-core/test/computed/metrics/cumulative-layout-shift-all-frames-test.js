@@ -6,8 +6,8 @@
 'use strict';
 
 const CumulativeLayoutShiftAllFrames = require('../../../computed/metrics/cumulative-layout-shift-all-frames.js'); // eslint-disable-line max-len
-const trace = require('../../fixtures/traces/frame-metrics-m89.json');
-const invalidTrace = require('../../fixtures/traces/progressive-app-m60.json');
+const missingWeightedClsTrace = require('../../fixtures/traces/frame-metrics-m89.json');
+const frameMetricsTrace = require('../../fixtures/traces/frame-metrics-m90.json');
 const createTestTrace = require('../../create-test-trace.js');
 
 /* eslint-env jest */
@@ -15,54 +15,118 @@ const createTestTrace = require('../../create-test-trace.js');
 describe('Metrics: CLS All Frames', () => {
   it('should compute value', async () => {
     const context = {computedCache: new Map()};
+    const result = await CumulativeLayoutShiftAllFrames.request(frameMetricsTrace, context);
+    expect(result.value).toBeCloseTo(0.0276);
+  });
+
+  it('should use unweighted score for trace missing weighted score', async () => {
+    const context = {computedCache: new Map()};
+    const result = await CumulativeLayoutShiftAllFrames.request(missingWeightedClsTrace, context);
+    expect(result.value).toBeCloseTo(0.459);
+  });
+
+  it('uses weighted_score_delta instead of score', async () => {
+    const trace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+    const mainFrame = trace.traceEvents[0].args.frame;
+    const childFrame = 'CHILDFRAME';
+    const cat = 'loading,rail,devtools.timeline';
+    const context = {computedCache: new Map()};
+    trace.traceEvents.push(
+      /* eslint-disable max-len */
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 2, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 3, weighted_score_delta: 1, is_main_frame: false}}}
+      /* eslint-enable max-len */
+    );
     const result = await CumulativeLayoutShiftAllFrames.request(trace, context);
-    expect(result.value).toBeCloseTo(0.54);
+    expect(result.value).toBe(3);
   });
 
-  it('should fail to compute a value for old trace', async () => {
+  it('uses score if weighted_score_delta is unavailable', async () => {
+    const trace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+    const mainFrame = trace.traceEvents[0].args.frame;
+    const childFrame = 'CHILDFRAME';
+    const cat = 'loading,rail,devtools.timeline';
     const context = {computedCache: new Map()};
-    const result = await CumulativeLayoutShiftAllFrames.request(invalidTrace, context);
-    expect(result.value).toBe(0);
+    trace.traceEvents.push(
+      /* eslint-disable max-len */
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 2, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 3, is_main_frame: false}}}
+      /* eslint-enable max-len */
+    );
+    const result = await CumulativeLayoutShiftAllFrames.request(trace, context);
+    expect(result.value).toBe(6);
   });
 
-  function makeTrace(shiftEventsData) {
-    const cumulativeScores = new Map();
-    const children = shiftEventsData.map(data => {
-      let cumulativeScore = cumulativeScores.get(data.pid) || 0;
-      if (!data.had_recent_input) cumulativeScore += data.score;
-      cumulativeScores.set(data.pid, cumulativeScore);
-      return {
-        name: 'LayoutShift',
-        cat: 'loading',
-        ph: 'I',
-        pid: data.pid,
-        tid: data.tid,
-        ts: 308559814315,
-        args: {
-          data: {
-            is_main_frame: true,
-            had_recent_input: data.had_recent_input,
-            score: data.score,
-            cumulative_score: cumulativeScore,
-          },
-        },
-      };
-    });
-
-    const trace = createTestTrace({});
-    trace.traceEvents.push(...children);
-    return trace;
-  }
-
-  it('collects layout shift data from all processes', async () => {
+  it('ignores had_recent_input for beginning of trace', async () => {
+    const trace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+    const mainFrame = trace.traceEvents[0].args.frame;
+    const childFrame = 'CHILDFRAME';
+    const cat = 'loading,rail,devtools.timeline';
     const context = {computedCache: new Map()};
-    const trace = makeTrace([
-      {pid: 1111, tid: 222, score: 1, had_recent_input: false},
-      {pid: 3333, tid: 444, score: 1, had_recent_input: false},
-      {pid: 3333, tid: 444, score: 1, had_recent_input: false},
-      {pid: 1111, tid: 222, score: 1, had_recent_input: false},
-    ]);
+    trace.traceEvents.push(
+      /* eslint-disable max-len */
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: true, score: 2, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 3, weighted_score_delta: 1, is_main_frame: false}}}
+      /* eslint-enable max-len */
+    );
     const result = await CumulativeLayoutShiftAllFrames.request(trace, context);
     expect(result.value).toBe(4);
+  });
+
+  it('collects layout shift data from main frame and all child frames', async () => {
+    const trace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+    const mainFrame = trace.traceEvents[0].args.frame;
+    const childFrame = 'CHILDFRAME';
+    const cat = 'loading,rail,devtools.timeline';
+    const context = {computedCache: new Map()};
+    trace.traceEvents.push(
+      /* eslint-disable max-len */
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+      {name: 'LayoutShift', cat, args: {frame: mainFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: true}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: mainFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: true}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: false}}}
+      /* eslint-enable max-len */
+    );
+    const result = await CumulativeLayoutShiftAllFrames.request(trace, context);
+    expect(result.value).toBe(3);
+  });
+
+  it('ignores layout shift data from other tabs', async () => {
+    const trace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+    const mainFrame = trace.traceEvents[0].args.frame;
+    const childFrame = 'CHILDFRAME';
+    const otherMainFrame = 'ANOTHERTABOPEN';
+    const cat = 'loading,rail,devtools.timeline';
+    const context = {computedCache: new Map()};
+    trace.traceEvents.push(
+      /* eslint-disable max-len */
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+      {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: otherMainFrame, url: 'https://example.com'}}},
+      {name: 'LayoutShift', cat, args: {frame: mainFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: true}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: mainFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: true}}},
+      {name: 'LayoutShift', cat, args: {frame: childFrame, data: {had_recent_input: true, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: otherMainFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}},
+      {name: 'LayoutShift', cat, args: {frame: otherMainFrame, data: {had_recent_input: false, score: 1, weighted_score_delta: 1, is_main_frame: false}}}
+      /* eslint-enable max-len */
+    );
+    const result = await CumulativeLayoutShiftAllFrames.request(trace, context);
+    expect(result.value).toBe(3);
   });
 });

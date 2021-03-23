@@ -158,6 +158,98 @@ describe('TraceProcessor', () => {
     });
   });
 
+  describe('resolveRootFrames', () => {
+    it('basic case', () => {
+      const frames = [
+        {id: 'A'},
+        {id: 'B', parent: 'A'},
+      ];
+      const rootFrames = TraceProcessor.resolveRootFrames(frames);
+      expect([...rootFrames.entries()]).toEqual([
+        ['A', 'A'],
+        ['B', 'A'],
+      ]);
+    });
+
+    it('single frame', () => {
+      const frames = [
+        {id: 'A'},
+      ];
+      const rootFrames = TraceProcessor.resolveRootFrames(frames);
+      expect([...rootFrames.entries()]).toEqual([
+        ['A', 'A'],
+      ]);
+    });
+
+    it('multiple trees', () => {
+      const frames = [
+        {id: 'C', parent: 'B'},
+        {id: 'B', parent: 'A'},
+        {id: 'A'},
+        {id: 'D'},
+        {id: 'E', parent: 'D'},
+      ];
+      const rootFrames = TraceProcessor.resolveRootFrames(frames);
+      expect([...rootFrames.entries()]).toEqual([
+        ['C', 'A'],
+        ['B', 'A'],
+        ['A', 'A'],
+        ['D', 'D'],
+        ['E', 'D'],
+      ]);
+    });
+
+    it('frameTreeEvents excludes other frame trees', () => {
+      const testTrace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+      const mainFrame = testTrace.traceEvents[0].args.frame;
+      const childFrame = 'CHILDFRAME';
+      const otherMainFrame = 'ANOTHERTAB';
+      const cat = 'loading,rail,devtools.timeline';
+      testTrace.traceEvents.push(
+        /* eslint-disable max-len */
+        {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}},
+        {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}},
+        {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: otherMainFrame, url: 'https://example.com'}}},
+        {name: 'Event1', cat, args: {frame: mainFrame}},
+        {name: 'Event2', cat, args: {frame: childFrame}},
+        {name: 'Event3', cat, args: {frame: otherMainFrame}}
+        /* eslint-enable max-len */
+      );
+      const trace = TraceProcessor.computeTraceOfTab(testTrace);
+      expect(trace.frameTreeEvents.map(e => e.name)).toEqual([
+        'navigationStart',
+        'domContentLoadedEventEnd',
+        'firstContentfulPaint',
+        'firstMeaningfulPaint',
+        'Event1',
+        'Event2',
+      ]);
+    });
+
+    it('frameTreeEvents includes main frame events if no FrameCommittedInBrowser found', () => {
+      const testTrace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
+      const mainFrame = testTrace.traceEvents[0].args.frame;
+      const childFrame = 'CHILDFRAME';
+      const otherMainFrame = 'ANOTHERTAB';
+      const cat = 'loading,rail,devtools.timeline';
+      testTrace.traceEvents.push(
+        /* eslint-disable max-len */
+        {name: 'Event1', cat, args: {frame: mainFrame}},
+        {name: 'Event2', cat, args: {frame: childFrame}},
+        {name: 'Event3', cat, args: {frame: otherMainFrame}}
+        /* eslint-enable max-len */
+      );
+      const trace = TraceProcessor.computeTraceOfTab(testTrace);
+      expect(trace.frameTreeEvents.map(e => e.name)).toEqual([
+        'navigationStart',
+        'domContentLoadedEventEnd',
+        'firstContentfulPaint',
+        'firstMeaningfulPaint',
+        'Event1',
+      ]);
+    });
+  });
+
   describe('getMainThreadTopLevelEvents', () => {
     it('gets durations of top-level tasks', () => {
       const trace = {traceEvents: pwaTrace};
@@ -389,7 +481,7 @@ Object {
       it('uses latest candidate', () => {
         const testTrace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
         const frame = testTrace.traceEvents[0].args.frame;
-        const args = {frame};
+        const args = {frame, data: {size: 50}};
         const cat = 'loading,rail,devtools.timeline';
         testTrace.traceEvents.push(
           {name: 'largestContentfulPaint::Candidate', cat, args, ts: 1000, duration: 10},
@@ -436,74 +528,87 @@ Object {
       });
     });
 
-    describe('finds correct LCP from all frames', () => {
+    describe('finds correct metrics from all frames', () => {
       it('in a trace', () => {
         const trace = TraceProcessor.computeTraceOfTab(lcpAllFramesTrace);
         expect({
+          // Main frame
+          'mainFrameIds.frameId': trace.mainFrameIds.frameId,
           'firstContentfulPaintEvt.ts': trace.firstContentfulPaintEvt.ts,
           'largestContentfulPaintEvt.ts': trace.largestContentfulPaintEvt.ts,
-          'mainFrameIds.frameId': trace.mainFrameIds.frameId,
-          'timeOriginEvt.ts': trace.timeOriginEvt.ts,
           'timestamps.firstContentfulPaint': trace.timestamps.firstContentfulPaint,
           'timestamps.largestContentfulPaint': trace.timestamps.largestContentfulPaint,
-          'timestamps.largestContentfulPaintAllFrames': trace.timestamps.largestContentfulPaintAllFrames, // eslint-disable-line max-len
           'timings.firstContentfulPaint': trace.timings.firstContentfulPaint,
           'timings.largestContentfulPaint': trace.timings.largestContentfulPaint,
+          // All frames
+          'firstContentfulPaintAllFramesEvt.ts': trace.firstContentfulPaintAllFramesEvt.ts,
+          'largestContentfulPaintAllFramesEvt.ts': trace.largestContentfulPaintAllFramesEvt.ts,
+          'timestamps.firstContentfulPaintAllFrames': trace.timestamps.firstContentfulPaintAllFrames, // eslint-disable-line max-len
+          'timestamps.largestContentfulPaintAllFrames': trace.timestamps.largestContentfulPaintAllFrames, // eslint-disable-line max-len
+          'timings.firstContentfulPaintAllFrames': trace.timings.firstContentfulPaintAllFrames,
           'timings.largestContentfulPaintAllFrames': trace.timings.largestContentfulPaintAllFrames,
         }).toMatchInlineSnapshot(`
           Object {
-            "firstContentfulPaintEvt.ts": 46134430620,
-            "largestContentfulPaintEvt.ts": 46134430620,
-            "mainFrameIds.frameId": "949C93159575C8C6CE08E7898C0B8E4D",
-            "timeOriginEvt.ts": 46133742490,
-            "timestamps.firstContentfulPaint": 46134430620,
-            "timestamps.largestContentfulPaint": 46134430620,
-            "timestamps.largestContentfulPaintAllFrames": 46139690898,
-            "timings.firstContentfulPaint": 688.13,
-            "timings.largestContentfulPaint": 688.13,
-            "timings.largestContentfulPaintAllFrames": 5948.408,
+            "firstContentfulPaintAllFramesEvt.ts": 23466705983,
+            "firstContentfulPaintEvt.ts": 23466886143,
+            "largestContentfulPaintAllFramesEvt.ts": 23466705983,
+            "largestContentfulPaintEvt.ts": 23466886143,
+            "mainFrameIds.frameId": "207613A6AD77B492759226780A40F6F4",
+            "timestamps.firstContentfulPaint": 23466886143,
+            "timestamps.firstContentfulPaintAllFrames": 23466705983,
+            "timestamps.largestContentfulPaint": 23466886143,
+            "timestamps.largestContentfulPaintAllFrames": 23466705983,
+            "timings.firstContentfulPaint": 863.013,
+            "timings.firstContentfulPaintAllFrames": 682.853,
+            "timings.largestContentfulPaint": 863.013,
+            "timings.largestContentfulPaintAllFrames": 682.853,
           }
         `);
       });
 
-      it('ignores main frame LCP events', () => {
+      it('finds FCP from all frames', () => {
         const testTrace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
-        const frame = testTrace.traceEvents[0].args.frame;
-        const args = {frame};
+        const mainFrame = testTrace.traceEvents[0].args.frame;
+        const childFrame = 'CHILDFRAME';
         const cat = 'loading,rail,devtools.timeline';
+
+        // Remove default FCP event because we will define them manually.
+        testTrace.traceEvents
+          = testTrace.traceEvents.filter(e => e.name !== 'firstContentfulPaint');
+
         testTrace.traceEvents.push(
           /* eslint-disable max-len */
-          {name: 'largestContentfulPaint::Candidate', cat, args, ts: 1000, duration: 10},
-          {name: 'NavStartToLargestContentfulPaint::Candidate::AllFrames::UKM', cat, args, ts: 1100, duration: 10},
-          {name: 'NavStartToLargestContentfulPaint::Invalidate::AllFrames::UKM', cat, args, ts: 1200, duration: 10},
-          {name: 'largestContentfulPaint::Invalidate', cat, args, ts: 1300, duration: 10},
-          {name: 'largestContentfulPaint::Candidate', cat, args, ts: 1400, duration: 10},
-          {name: 'NavStartToLargestContentfulPaint::Candidate::AllFrames::UKM', cat, args, ts: 1500, duration: 10}
+          {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}, ts: 900, duration: 10},
+          {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}, ts: 910, duration: 10},
+          {name: 'firstContentfulPaint', cat, args: {frame: childFrame}, ts: 1000, duration: 10},
+          {name: 'firstContentfulPaint', cat, args: {frame: mainFrame}, ts: 1100, duration: 10}
           /* eslint-enable max-len */
         );
         const trace = TraceProcessor.computeTraceOfTab(testTrace);
-        assert.equal(trace.timestamps.largestContentfulPaint, 1400);
-        assert.equal(trace.timestamps.largestContentfulPaintAllFrames, 1500);
-        assert.ok(!trace.lcpInvalidated);
+        assert.equal(trace.timestamps.firstContentfulPaint, 1100);
+        assert.equal(trace.timestamps.firstContentfulPaintAllFrames, 1000);
       });
 
-      it('invalidates even if main frame LCP is available', () => {
+      it('finds LCP from all frames', () => {
         const testTrace = createTestTrace({timeOrigin: 0, traceEnd: 2000});
-        const frame = testTrace.traceEvents[0].args.frame;
-        const args = {frame};
+        const mainFrame = testTrace.traceEvents[0].args.frame;
+        const childFrame = 'CHILDFRAME';
         const cat = 'loading,rail,devtools.timeline';
         testTrace.traceEvents.push(
           /* eslint-disable max-len */
-          {name: 'largestContentfulPaint::Candidate', cat, args, ts: 1000, duration: 10},
-          {name: 'NavStartToLargestContentfulPaint::Candidate::AllFrames::UKM', cat, args, ts: 1100, duration: 10},
-          {name: 'NavStartToLargestContentfulPaint::Invalidate::AllFrames::UKM', cat, args, ts: 1200, duration: 10},
-          {name: 'largestContentfulPaint::Invalidate', cat, args, ts: 1300, duration: 10},
-          {name: 'largestContentfulPaint::Candidate', cat, args, ts: 1400, duration: 10}
+          {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: mainFrame, url: 'https://example.com'}}, ts: 900, duration: 10},
+          {name: 'FrameCommittedInBrowser', cat, args: {data: {frame: childFrame, parent: mainFrame, url: 'https://frame.com'}}, ts: 910, duration: 10},
+          {name: 'largestContentfulPaint::Candidate', cat, args: {data: {size: 300}, frame: mainFrame}, ts: 1000, duration: 10},
+          {name: 'largestContentfulPaint::Candidate', cat, args: {data: {size: 100}, frame: childFrame}, ts: 1100, duration: 10},
+          {name: 'largestContentfulPaint::Invalidate', cat, args: {frame: childFrame}, ts: 1200, duration: 10},
+          {name: 'largestContentfulPaint::Invalidate', cat, args: {frame: mainFrame}, ts: 1300, duration: 10},
+          {name: 'largestContentfulPaint::Candidate', cat, args: {data: {size: 200}, frame: childFrame}, ts: 1400, duration: 10},
+          {name: 'largestContentfulPaint::Candidate', cat, args: {data: {size: 100}, frame: mainFrame}, ts: 1500, duration: 10}
           /* eslint-enable max-len */
         );
         const trace = TraceProcessor.computeTraceOfTab(testTrace);
-        assert.equal(trace.timestamps.largestContentfulPaint, 1400);
-        assert.equal(trace.timestamps.largestContentfulPaintAllFrames, undefined);
+        assert.equal(trace.timestamps.largestContentfulPaint, 1500);
+        assert.equal(trace.timestamps.largestContentfulPaintAllFrames, 1400);
         assert.ok(!trace.lcpInvalidated);
       });
     });

@@ -18,12 +18,42 @@ declare global {
   module LH {
     export interface Artifacts extends BaseArtifacts, GathererArtifacts {}
 
+    export type FRArtifacts = StrictOmit<Artifacts,
+      | 'AnchorElements'
+      | 'CSSUsage'
+      | 'Fonts'
+      | 'FullPageScreenshot'
+      | 'HTTPRedirect'
+      | 'ImageElements'
+      | 'InspectorIssues'
+      | 'JsUsage'
+      | 'LinkElements'
+      | 'MainDocumentContent'
+      | 'Manifest'
+      | 'MixedContent'
+      | 'OptimizedImages'
+      | 'ResponseCompression'
+      | 'ScriptElements'
+      | 'ServiceWorker'
+      | 'SourceMaps'
+      | 'TagsBlockingFirstPaint'
+      | 'TraceElements'
+      | keyof FRBaseArtifacts
+    >;
+
     /**
-     * Artifacts always created by GatherRunner. These artifacts are available to Lighthouse plugins.
+     * Artifacts always created by gathering. These artifacts are available to Lighthouse plugins.
      * NOTE: any breaking changes here are considered breaking Lighthouse changes that must be done
      * on a major version bump.
      */
-    export interface BaseArtifacts {
+    export type BaseArtifacts = UniversalBaseArtifacts & ContextualBaseArtifacts & LegacyBaseArtifacts
+
+    export type FRBaseArtifacts = UniversalBaseArtifacts & ContextualBaseArtifacts;
+
+    /**
+     * The set of base artifacts that are available in every mode of Lighthouse operation.
+     */
+    export interface UniversalBaseArtifacts {
       /** The ISO-8601 timestamp of when the test page was fetched and artifacts collected. */
       fetchTime: string;
       /** A set of warnings about unexpected things encountered while loading and testing the page. */
@@ -32,28 +62,40 @@ declare global {
       HostFormFactor: 'desktop'|'mobile';
       /** The user agent string of the version of Chrome used. */
       HostUserAgent: string;
-      /** The user agent string that Lighthouse used to load the page. */
-      NetworkUserAgent: string;
       /** The benchmark index that indicates rough device class. */
       BenchmarkIndex: number;
-      /** Parsed version of the page's Web App Manifest, or null if none found. */
-      WebAppManifest: Artifacts.Manifest | null;
-      /** Errors preventing page being installable as PWA. */
-      InstallabilityErrors: Artifacts.InstallabilityErrors;
+      /** An object containing information about the testing configuration used by Lighthouse. */
+      settings: Config.Settings;
+      /** The timing instrumentation of the gather portion of a run. */
+      Timing: Artifacts.MeasureEntry[];
+    }
+
+    /**
+     * The set of base artifacts whose semantics differ or may be valueless in certain Lighthouse gather modes.
+     */
+    export interface ContextualBaseArtifacts {
+      /** The URL initially requested and the post-redirects URL that was actually loaded. */
+      URL: {requestedUrl: string, finalUrl: string};
+      /** If loading the page failed, value is the error that caused it. Otherwise null. */
+      PageLoadError: LighthouseError | null;
+    }
+
+    /**
+     * The set of base artifacts that were replaced by standard gatherers in Fraggle Rock.
+     */
+    export interface LegacyBaseArtifacts {
+      /** The user agent string that Lighthouse used to load the page. Set to the empty string if unknown. */
+      NetworkUserAgent: string;
       /** Information on detected tech stacks (e.g. JS libraries) used by the page. */
       Stacks: Artifacts.DetectedStack[];
+      /** Parsed version of the page's Web App Manifest, or null if none found. This moved to a regular artifact in Fraggle Rock. */
+      WebAppManifest: Artifacts.Manifest | null;
+      /** Errors preventing page being installable as PWA. This moved to a regular artifact in Fraggle Rock. */
+      InstallabilityErrors: Artifacts.InstallabilityErrors;
       /** A set of page-load traces, keyed by passName. */
       traces: {[passName: string]: Trace};
       /** A set of DevTools debugger protocol records, keyed by passName. */
       devtoolsLogs: {[passName: string]: DevtoolsLog};
-      /** An object containing information about the testing configuration used by Lighthouse. */
-      settings: Config.Settings;
-      /** The URL initially requested and the post-redirects URL that was actually loaded. */
-      URL: {requestedUrl: string, finalUrl: string};
-      /** The timing instrumentation of the gather portion of a run. */
-      Timing: Artifacts.MeasureEntry[];
-      /** If loading the page failed, value is the error that caused it. Otherwise null. */
-      PageLoadError: LighthouseError | null;
     }
 
     /**
@@ -64,7 +106,7 @@ declare global {
     export interface PublicGathererArtifacts {
       /** ConsoleMessages deprecation and intervention warnings, console API calls, and exceptions logged by Chrome during page load. */
       ConsoleMessages: Artifacts.ConsoleMessage[];
-      /** All the iframe elements in the page.*/
+      /** All the iframe elements in the page. */
       IFrameElements: Artifacts.IFrameElement[];
       /** The contents of the main HTML document network resource. */
       MainDocumentContent: string;
@@ -95,6 +137,8 @@ declare global {
       CacheContents: string[];
       /** CSS coverage information for styles used by page's final state. */
       CSSUsage: {rules: Crdp.CSS.RuleUsage[], stylesheets: Artifacts.CSSStyleSheetInfo[]};
+      /** The primary log of devtools protocol activity. Used in Fraggle Rock gathering. */
+      DevtoolsLog: DevtoolsLog;
       /** Information on the document's doctype(or null if not present), specifically the name, publicId, and systemId.
           All properties default to an empty string if not present */
       Doctype: Artifacts.Doctype | null;
@@ -138,6 +182,8 @@ declare global {
       TagsBlockingFirstPaint: Artifacts.TagBlockingFirstPaint[];
       /** Information about tap targets including their position and size. */
       TapTargets: Artifacts.TapTarget[];
+      /** The primary log of devtools protocol activity. Used in Fraggle Rock gathering. */
+      Trace: LH.Trace;
       /** Elements associated with metrics (ie: Largest Contentful Paint element). */
       TraceElements: Artifacts.TraceElement[];
     }
@@ -148,10 +194,10 @@ declare global {
       export type MetaElement = LH.Artifacts['MetaElements'][0];
 
       export interface NodeDetails {
-        lhId?: string,
+        lhId: string,
         devtoolsNodePath: string,
         selector: string,
-        boundingRect?: Rect,
+        boundingRect: Rect,
         snippet: string,
         nodeLabel: string,
       }
@@ -166,7 +212,6 @@ declare global {
         impact?: string;
         tags: Array<string>;
         nodes: Array<{
-          html: string;
           target: Array<string>;
           failureSummary?: string;
           node: NodeDetails;
@@ -205,7 +250,8 @@ declare global {
         src: string | null;
         data: string | null;
         code: string | null;
-        params: {name: string; value: string}[];
+        params: Array<{name: string; value: string}>;
+        node: LH.Artifacts.NodeDetails;
       }
 
       export interface IFrameElement {
@@ -402,16 +448,35 @@ declare global {
         displayedHeight: number;
         /** The natural width of the underlying image, uses img.naturalWidth. See https://codepen.io/patrickhulce/pen/PXvQbM for examples. */
         naturalWidth?: number;
-        /** The natural height of the underlying image, uses img.naturalHeight. See https://codepen.io/patrickhulce/pen/PXvQbM for examples. */
+        /**
+         * The natural height of the underlying image, uses img.naturalHeight. See https://codepen.io/patrickhulce/pen/PXvQbM for examples.
+         * TODO: explore revising the shape of this data. https://github.com/GoogleChrome/lighthouse/issues/12077
+         */
         naturalHeight?: number;
         /** The raw width attribute of the image element. CSS images will be set to the empty string. */
         attributeWidth: string;
         /** The raw height attribute of the image element. CSS images will be set to the empty string. */
         attributeHeight: string;
-        /** The CSS width property of the image element. */
+        /**
+         * The CSS width property of the image element.
+         * TODO: explore deprecating this in favor of _privateCssSizing. https://github.com/GoogleChrome/lighthouse/issues/12077
+         */
         cssWidth?: string;
-        /** The CSS height property of the image element. */
+        /**
+         * The CSS height property of the image element.
+         * TODO: explore deprecating this in favor of _privateCssSizing
+         */
         cssHeight?: string;
+        /**
+         * The width/height of the element as defined by matching CSS rules. Set to `undefined` if the data was not collected.
+         * TODO: Finalize naming/shape of this data prior to Lighthouse 8. https://github.com/GoogleChrome/lighthouse/issues/12077
+         */
+        _privateCssSizing?: {
+          /** The width of the image as expressed by CSS rules. Set to `null` if there was no width set in CSS. */
+          width: string | null;
+          /** The height of the image as expressed by CSS rules. Set to `null` if there was no height set in CSS. */
+          height: string | null;
+        }
         /** The BoundingClientRect of the element. */
         clientRect: {
           top: number;
@@ -466,8 +531,11 @@ declare global {
         endTime: number;
         transferSize: number;
         tag: {
-          tagName: string;
+          tagName: 'LINK'|'SCRIPT';
+          /** The value of `HTMLLinkElement.href` or `HTMLScriptElement.src`. */
           url: string;
+          /** A record of when changes to the `HTMLLinkElement.media` attribute occurred and if the new media type matched the page. */
+          mediaChanges?: Array<{href: string, media: string, msSinceHTMLEnd: number, matches: boolean}>;
         };
       }
 
@@ -586,6 +654,7 @@ declare global {
         timeOrigin: number;
         firstPaint?: number;
         firstContentfulPaint: number;
+        firstContentfulPaintAllFrames: number;
         firstMeaningfulPaint?: number;
         largestContentfulPaint?: number;
         largestContentfulPaintAllFrames?: number;
@@ -603,16 +672,20 @@ declare global {
         processEvents: Array<TraceEvent>;
         /** The subset of trace events from the page's main thread, sorted by timestamp. */
         mainThreadEvents: Array<TraceEvent>;
+        /** The subset of trace events from the main frame and any child frames, sorted by timestamp. */
+        frameTreeEvents: Array<TraceEvent>;
         /** IDs for the trace's main frame, process, and thread. */
         mainFrameIds: {pid: number, tid: number, frameId: string};
         /** The list of frames committed in the trace. */
-        frames: Array<{frame: string, url: string}>;
+        frames: Array<{id: string, url: string}>;
         /** The trace event marking the time at which the page load should consider to have begun. Typically the same as the navigationStart but might differ due to SPA navigations, client-side redirects, etc. */
         timeOriginEvt: TraceEvent;
         /** The trace event marking firstPaint, if it was found. */
         firstPaintEvt?: TraceEvent;
         /** The trace event marking firstContentfulPaint, if it was found. */
         firstContentfulPaintEvt: TraceEvent;
+        /** The trace event marking firstContentfulPaint from all frames, if it was found. */
+        firstContentfulPaintAllFramesEvt: TraceEvent;
         /** The trace event marking firstMeaningfulPaint, if it was found. */
         firstMeaningfulPaintEvt?: TraceEvent;
         /** The trace event marking largestContentfulPaint, if it was found. */
@@ -659,6 +732,8 @@ declare global {
       export interface TimingSummary {
         firstContentfulPaint: number;
         firstContentfulPaintTs: number | undefined;
+        firstContentfulPaintAllFrames: number | undefined;
+        firstContentfulPaintAllFramesTs: number | undefined;
         firstMeaningfulPaint: number;
         firstMeaningfulPaintTs: number | undefined;
         largestContentfulPaint: number | undefined;
@@ -687,6 +762,8 @@ declare global {
         observedFirstPaintTs: number | undefined;
         observedFirstContentfulPaint: number;
         observedFirstContentfulPaintTs: number;
+        observedFirstContentfulPaintAllFrames: number;
+        observedFirstContentfulPaintAllFramesTs: number;
         observedFirstMeaningfulPaint: number | undefined;
         observedFirstMeaningfulPaintTs: number | undefined;
         observedLargestContentfulPaint: number | undefined;
@@ -705,6 +782,11 @@ declare global {
         observedLastVisualChangeTs: number;
         observedSpeedIndex: number;
         observedSpeedIndexTs: number;
+        layoutShiftAvgSessionGap5s: number,
+        layoutShiftMaxSessionGap1s: number,
+        layoutShiftMaxSessionGap1sLimit5s: number,
+        layoutShiftMaxSliding1s: number,
+        layoutShiftMaxSliding300ms: number,
       }
 
       export interface Form {
@@ -768,9 +850,9 @@ declare global {
         stackTrace?: Crdp.Runtime.StackTrace;
         /** The URL of the log/exception, if known. */
         url?: string;
-        /** Line number in the script (0-based), if known. */
+        /** Line number in the script (0-indexed), if known. */
         lineNumber?: number;
-        /** Column number in the script (0-based), if known. */
+        /** Column number in the script (0-indexed), if known. */
         columnNumber?: number;
       }
 

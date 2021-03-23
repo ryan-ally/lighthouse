@@ -28,6 +28,11 @@ function createMockSession() {
   return session;
 }
 
+/** @param {string} s */
+function trimTrailingWhitespace(s) {
+  return s.split('\n').map(line => line.trimEnd()).join('\n');
+}
+
 describe('ExecutionContext', () => {
   /** @type {LH.Gatherer.FRProtocolSession} */
   let sessionMock;
@@ -77,6 +82,8 @@ describe('ExecutionContext', () => {
     executionDestroyed[1]({executionContextId: 42});
     expect(executionContext.getContextId()).toEqual(undefined);
   });
+
+  it.todo('should cache native objects in page');
 });
 
 describe('.evaluateAsync', () => {
@@ -205,27 +212,27 @@ describe('.evaluate', () => {
         return new __nativePromise(function (resolve) {
           return __nativePromise.resolve()
             .then(_ => (() => {
-      
-      function main(value) {
+
+      return (function main(value) {
       return value;
-    }
-      return main(1);
+    })(1);
     })())
             .catch(function wrapRuntimeEvalErrorInBrowser(err) {
-  err = err || new Error();
-  const fallbackMessage = typeof err === 'string' ? err : 'unknown error';
+  if (!err || typeof err === 'string') {
+    err = new Error(err);
+  }
 
   return {
     __failedInBrowser: true,
     name: err.name || 'Error',
-    message: err.message || fallbackMessage,
-    stack: err.stack || (new Error()).stack,
+    message: err.message || 'unknown error',
+    stack: err.stack,
   };
 })
             .then(resolve);
         });
       }())`.trim();
-    expect(expression).toBe(expected);
+    expect(trimTrailingWhitespace(expression)).toBe(trimTrailingWhitespace(expected));
     expect(await eval(expression)).toBe(1);
   });
 
@@ -245,10 +252,32 @@ describe('.evaluate', () => {
     const code = mockFn.mock.calls[0][0];
     expect(code).toBe(`(() => {
       
-      function mainFn(value) {
+      return (function mainFn(value) {
       return value;
-    }
-      return mainFn(1);
+    })(1);
+    })()`);
+    expect(eval(code)).toEqual(1);
+  });
+
+  it('transforms parameters into an expression (arrows)', async () => {
+    // Mock so the argument can be intercepted, and the generated code
+    // can be evaluated without the error catching code.
+    const mockFn = executionContext._evaluateInContext = jest.fn()
+      .mockImplementation(() => Promise.resolve());
+
+    /** @param {number} value */
+    const mainFn = (value) => {
+      return value;
+    };
+    /** @type {number} */
+    const value = await executionContext.evaluate(mainFn, {args: [1]}); // eslint-disable-line no-unused-vars
+
+    const code = mockFn.mock.calls[0][0];
+    expect(code).toBe(`(() => {
+      
+      return ((value) => {
+      return value;
+    })(1);
     })()`);
     expect(eval(code)).toEqual(1);
   });
@@ -286,17 +315,16 @@ describe('.evaluate', () => {
     });
 
     const code = mockFn.mock.calls[0][0];
-    expect(code).toEqual(`(() => {
+    expect(trimTrailingWhitespace(code)).toEqual(`(() => {
       function abs(val) {
       return Math.abs(val);
     }
 function square(val) {
       return val * val;
     }
-      function mainFn({a, b}, passThru) {
+      return (function mainFn({a, b}, passThru) {
       return {a: abs(a), b: square(b), passThru};
-    }
-      return mainFn({"a":-5,"b":10},"hello");
+    })({"a":-5,"b":10},"hello");
     })()`);
     expect(eval(code)).toEqual({a: 5, b: 100, passThru: 'hello'});
   });

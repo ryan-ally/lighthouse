@@ -8,6 +8,7 @@
 const ProtocolSession = require('./session.js');
 const ExecutionContext = require('../../gather/driver/execution-context.js');
 
+/** @return {*} */
 const throwNotConnectedFn = () => {
   throw new Error('Session not connected');
 };
@@ -20,6 +21,8 @@ const defaultSession = {
   on: throwNotConnectedFn,
   once: throwNotConnectedFn,
   off: throwNotConnectedFn,
+  addProtocolMessageListener: throwNotConnectedFn,
+  removeProtocolMessageListener: throwNotConnectedFn,
   sendCommand: throwNotConnectedFn,
 };
 
@@ -38,22 +41,23 @@ class Driver {
     this.defaultSession = defaultSession;
   }
 
+  /** @return {LH.Gatherer.FRTransitionalDriver['executionContext']} */
+  get executionContext() {
+    if (!this._executionContext) return throwNotConnectedFn();
+    return this._executionContext;
+  }
+
+  /** @return {Promise<string>} */
+  async url() {
+    return this._page.url();
+  }
+
   /** @return {Promise<void>} */
   async connect() {
     if (this._session) return;
     const session = await this._page.target().createCDPSession();
     this._session = this.defaultSession = new ProtocolSession(session);
     this._executionContext = new ExecutionContext(this._session);
-  }
-
-  /**
-   * @param {string} expression
-   * @param {{useIsolation?: boolean}} [options]
-   * @return {Promise<*>}
-   */
-  async evaluateAsync(expression, options) {
-    if (!this._executionContext) throw new Error('Driver not connected to page');
-    return this._executionContext.evaluateAsync(expression, options);
   }
 }
 
