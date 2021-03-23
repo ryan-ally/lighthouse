@@ -24,9 +24,9 @@ describe('issueAdded types', () => {
     const json = await fetch(browserProtocolUrl).then(r => r.json());
 
     inspectorIssueDetailsTypes = json.domains
-      .find(d => d.domain === 'Audits')
-      .types.find(t => t.id === 'InspectorIssueDetails')
-      .properties.map(t => t.name)
+      .find(d => d.domain === 'Audits').types
+      .find(t => t.id === 'InspectorIssueDetails').properties
+      .map(t => t.name)
       .sort();
   });
 
