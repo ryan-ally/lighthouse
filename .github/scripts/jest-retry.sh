@@ -10,5 +10,4 @@
 
 set -euxo pipefail
 
-$*
-$* --onlyFailures --passWithNoTests
+$* || $* --onlyFailures
