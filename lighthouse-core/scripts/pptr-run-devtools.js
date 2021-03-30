@@ -78,8 +78,8 @@ new Promise(resolve => {
 `;
 
 const startLighthouse = `
-(() => {
-  UI.ViewManager.instance().showView('lighthouse');
+(async () => {
+  await UI.ViewManager.instance().showView('lighthouse');
   const button = UI.panels.lighthouse.contentElement.querySelector('button');
   if (button.disabled) throw new Error('Start button disabled');
   button.click();
@@ -112,8 +112,10 @@ async function testPage(browser, url) {
   /** @type {RuntimeEvaluateResponse|undefined} */
   let startLHResponse;
   while (!startLHResponse || startLHResponse.exceptionDetails) {
-    startLHResponse = await session.send('Runtime.evaluate', {expression: startLighthouse})
-      .catch(err => err);
+    startLHResponse = await session.send('Runtime.evaluate', {
+      expression: startLighthouse,
+      awaitPromise: true,
+    }).catch(err => err);
   }
 
   /** @type {RuntimeEvaluateResponse} */
@@ -163,7 +165,7 @@ async function run() {
 
   const browser = await puppeteer.launch({
     executablePath: process.env.CHROME_PATH,
-    args: argv.d ? [argv.d] : [],
+    args: argv.d ? [`--custom-devtools-frontend=${argv.d}`] : [],
     devtools: true,
   });
 
