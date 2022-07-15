@@ -152,7 +152,7 @@
     "prettier": "^1.14.3",
     "pretty-json-stringify": "^0.0.2",
     "puppeteer": "^1.19.0",
-    "terser": "^5.3.8",
+    "terser": "^5.14.2",
     "typed-query-selector": "^2.4.0",
     "typescript": "4.2.3",
     "webtreemap-cdt": "^3.0.1"
